@@ -5,7 +5,7 @@ from flask import Flask
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CallbackQueryHandler, CommandHandler, MessageHandler, filters, ContextTypes
 
-TELEGRAM_BOT_TOKEN = "8839063447:AAGSXQm2XGXMaAMlcnivAnXtFzH5TZm-mqU"
+TELEGRAM_BOT_TOKEN = "9253853626:AAGqFmlMg3HH4enaLeqfye8r4Ki3xHQueo8"
 
 app_web = Flask(__name__)
 
