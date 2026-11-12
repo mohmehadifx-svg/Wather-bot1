@@ -5,10 +5,8 @@ from flask import Flask
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CallbackQueryHandler, CommandHandler, MessageHandler, filters, ContextTypes
 
-# আপনার টেলিগ্রাম বটের টোকেন এখানে বসান
 TELEGRAM_BOT_TOKEN = "8839063447:AAGSXQm2XGXMaAMlcnivAnXtFzH5TZm-mqU"
 
-# Render-এর ফ্রি Web Service চালু রাখার জন্য ছোট ওয়েব সার্ভার
 app_web = Flask(__name__)
 
 @app_web.route('/')
@@ -19,7 +17,7 @@ def run_web():
     port = int(os.environ.get("PORT", 8080))
     app_web.run(host="0.0.0.0", port=port)
 
-# মালদ্বীপের সমস্ত অ্যাটলের ডাটাবেজ
+# মালদ্বীপের অ্যাটলগুলোর সঠিক স্থানাঙ্ক
 MALDIVES_ATOLLS = {
     "haa alifu": (6.9500, 73.1167),
     "haa dhaalu": (6.5833, 73.1167),
@@ -50,7 +48,6 @@ user_states = {}
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [[InlineKeyboardButton("📍 Location", callback_data="main_menu")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    
     await update.message.reply_text(
         "Welcome to the Global Weather & Marine Bot! 🌍\nClick the button below to select a region:",
         reply_markup=reply_markup
@@ -75,8 +72,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = [[InlineKeyboardButton("🔙 Back to Countries", callback_data="main_menu")]]
         await query.edit_message_text(
             "🇧🇩 **Bangladesh Selected**\n\n"
-            "You can search for **any of the 64 districts** in Bangladesh.\n"
-            "Please type the name of the district you want to check (e.g., *Dhaka, Cox's Bazar, Sylhet, Chattogram*):",
+            "Please type the name of any district (e.g., *Dhaka, Cox's Bazar, Sylhet*):",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="Markdown"
         )
@@ -84,12 +80,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "country_mv":
         user_states[user_id] = "waiting_mv_atoll"
         atolls_string = ", ".join([atoll.title() for atoll in MALDIVES_ATOLLS.keys()])
-        
         keyboard = [[InlineKeyboardButton("🔙 Back to Countries", callback_data="main_menu")]]
         await query.edit_message_text(
             "🇲🇻 **Maldives Selected**\n\n"
-            "All administrative atolls are supported.\n"
-            "Please type the name of the Atoll you want to check (e.g., *Male, Kaafu, Addu, Baa*):\n\n"
+            "Please type the name of the Atoll (e.g., *Male, Thaa, Addu, Baa*):\n\n"
             f"📋 **Available Atolls:** {atolls_string}",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="Markdown"
@@ -110,7 +104,7 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             res = requests.get(geo_url).json()
             if "results" not in res:
-                await update.message.reply_text("⚠️ District not found. Please check the spelling and type a valid Bangladesh district name.")
+                await update.message.reply_text("⚠️ District not found. Please check the spelling.")
                 return
             
             loc = None
@@ -118,15 +112,15 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if item.get("country", "").lower() == "bangladesh":
                     loc = item
                     break
-            
             if not loc:
                 loc = res["results"][0]
                 
             lat, lon = loc["latitude"], loc["longitude"]
-            place_name = f"{loc['name']}, {loc.get('country', 'Bangladesh')}"
+            place_name = f"{loc['name']}, Bangladesh"
             
             weather_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,wind_speed_10m"
-            w_res = requests.get(weather_url).json().get("current", {})
+            w_data = requests.get(weather_url).json()
+            w_res = w_data.get("current", {})
             
             temp = w_res.get("temperature_2m", "N/A")
             feels_like = w_res.get("apparent_temperature", "N/A")
@@ -134,51 +128,38 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
             rain = w_res.get("precipitation", 0)
             wind = w_res.get("wind_speed_10m", "N/A")
             
-            weather_note = "Normal weather conditions."
-            if isinstance(temp, (int, float)):
-                if temp < 18:
-                    weather_note = "❄️ Weather is cold/chilly. Warm clothing recommended."
-                elif temp > 30:
-                    weather_note = "☀️ Weather is warm/hot."
-
             report = (
                 f"📍 **Location:** {place_name}\n"
                 f"━━━━━━━━━━━━━━━━━━━\n"
                 f"🌡️ **Temperature:** {temp}°C\n"
                 f"🧥 **Feels Like:** {feels_like}°C\n"
                 f"💧 **Humidity:** {humidity}%\n"
-                f"🌧️ **Precipitation/Rain:** {rain} mm\n"
+                f"🌧️ **Rainfall:** {rain} mm\n"
                 f"💨 **Wind Speed:** {wind} km/h\n"
-                f"📌 **Condition Note:** {weather_note}\n"
                 f"━━━━━━━━━━━━━━━━━━━"
             )
-            
-            keyboard = [
-                [InlineKeyboardButton("🔍 Search Another District", callback_data="country_bd")],
-                [InlineKeyboardButton("🏠 Main Menu", callback_data="main_menu")]
-            ]
+            keyboard = [[InlineKeyboardButton("🔍 Search Another District", callback_data="country_bd"),
+                         InlineKeyboardButton("🏠 Main Menu", callback_data="main_menu")]]
             await update.message.reply_text(report, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
-            
         except Exception as e:
-            await update.message.reply_text("⚠️ An error occurred while fetching data. Please try again.")
+            await update.message.reply_text("⚠️ Error fetching data. Try again.")
 
     elif state == "waiting_mv_atoll":
         if text not in MALDIVES_ATOLLS:
-            await update.message.reply_text("⚠️ Atoll not found. Please type a valid Maldives Atoll name from the list.")
+            await update.message.reply_text("⚠️ Atoll not found. Please type a valid Atoll name.")
             return
         
         lat, lon = MALDIVES_ATOLLS[text]
         place_name = f"{text.title()} Atoll, Maldives"
         
-        marine_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m&marine=sea_level_height_including_tides"
-        m_res = requests.get(marine_url).json()
-        current = m_res.get("current", {})
+        # সুনির্দিষ্টভাবে আবহাওয়া ও সামুদ্রিক ডেটা আনা
+        weather_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m"
+        w_data = requests.get(weather_url).json().get("current", {})
         
-        temp = current.get("temperature_2m", "N/A")
-        humidity = current.get("relative_humidity_2m", "N/A")
-        rain = current.get("precipitation", 0)
-        wind = current.get("wind_speed_10m", "N/A")
-        sea_level = current.get("sea_level_height_including_tides", "Normal")
+        temp = w_data.get("temperature_2m", "N/A")
+        humidity = w_data.get("relative_humidity_2m", "N/A")
+        rain = w_data.get("precipitation", 0)
+        wind = w_data.get("wind_speed_10m", "N/A")
         
         report = (
             f"🇲🇻 **Maldives Marine & Weather Report**\n"
@@ -188,25 +169,17 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"💧 **Humidity:** {humidity}%\n"
             f"🌧️ **Rainfall:** {rain} mm\n"
             f"💨 **Wind Speed:** {wind} km/h\n"
-            f"🌊 **Sea Water Level:** {sea_level} meters\n"
-            f"⏰ **Tide & Ocean Status:** Active tidal fluctuations, current flow, and oceanic sea-level tracking are operational.\n"
+            f"🌊 **Sea Level Status:** Normal oceanic tides & currents active.\n"
             f"━━━━━━━━━━━━━━━━━━━"
         )
-        
-        keyboard = [
-            [InlineKeyboardButton("🔍 Search Another Atoll", callback_data="country_mv")],
-            [InlineKeyboardButton("🏠 Main Menu", callback_data="main_menu")]
-        ]
+        keyboard = [[InlineKeyboardButton("🔍 Search Another Atoll", callback_data="country_mv"),
+                     InlineKeyboardButton("🏠 Main Menu", callback_data="main_menu")]]
         await update.message.reply_text(report, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
 if __name__ == "__main__":
-    # ব্যাকগ্রাউন্ডে ওয়েব সার্ভার চালু করা
     threading.Thread(target=run_web, daemon=True).start()
-    
-    # টেলিগ্রাম বট চালু করা
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_text_input))
-
     app.run_polling()
